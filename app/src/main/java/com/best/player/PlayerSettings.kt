@@ -65,6 +65,8 @@ class PlayerSettings(context: Context) {
             label.text = context.getString(R.string.pref_double_tap, value.toInt())
         }
 
+        view.findViewById<TextView>(R.id.tv_credit).text = AppInfo.credit(context)
+
         MaterialAlertDialogBuilder(context)
             .setTitle(R.string.settings)
             .setView(view)

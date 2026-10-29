@@ -33,7 +33,8 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/list"
@@ -70,4 +71,14 @@
                 android:visibility="gone" />
         </LinearLayout>
     </FrameLayout>
+
+    <TextView
+        android:id="@+id/credit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="8dp"
+        android:paddingBottom="10dp"
+        android:textColor="#80FFFFFF"
+        android:textSize="12sp" />
 </LinearLayout>

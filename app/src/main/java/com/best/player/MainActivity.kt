@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         emptyText = findViewById(R.id.empty_text)
         btnGrant = findViewById(R.id.btn_grant)
         btnGrant.setOnClickListener { requestPermission.launch(videoPermission) }
+        findViewById<TextView>(R.id.credit).text = AppInfo.credit(this)
         findViewById<View>(R.id.btn_open).setOnClickListener { openDocument.launch(arrayOf("video/*")) }
 
         adapter = VideoAdapter(lifecycleScope) { play(it.uri, it.name) }

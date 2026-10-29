@@ -34,4 +34,5 @@
     <string name="pref_swipe_seek">ปัดซ้าย/ขวาเพื่อเลื่อนเวลา</string>
     <string name="pref_auto_pip">เข้าภาพซ้อนภาพอัตโนมัติเมื่อออกจากแอพ</string>
     <string name="pref_double_tap">แตะสองครั้งที่ขอบจอ ข้าม/ถอย: %1$d วินาที</string>
+    <string name="credit">Best Player v%1$s · By NorthXbar</string>
 </resources>
