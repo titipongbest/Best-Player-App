@@ -19,6 +19,7 @@ import android.util.Rational
 import android.provider.OpenableColumns
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewConfiguration
@@ -65,6 +66,7 @@ class PlayerActivity : AppCompatActivity() {
         private const val SEEK_WATCHDOG_MS = 400L
         /** Horizontal swipe across the full screen width moves this much time (capped by duration). */
         private const val SWIPE_FULL_WIDTH_MS = 120_000L
+        private const val MAX_ZOOM = 5f
         private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
     }
 
@@ -123,6 +125,15 @@ class PlayerActivity : AppCompatActivity() {
     private var gestureStartVolume = 0
     private var gestureStartBrightness = 0.5f
     private var touchSlop = 0
+
+    // --- Pinch zoom / two-finger pan ---
+    private var zoomScale = 1f
+    private var multiTouch = false
+    private var lastFocusX = Float.NaN
+    private var lastFocusY = Float.NaN
+    private val zoomTarget: View by lazy {
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame) ?: playerView
+    }
 
     private enum class GestureMode { NONE, IGNORED, SEEK, VOLUME, BRIGHTNESS }
 
@@ -191,6 +202,7 @@ class PlayerActivity : AppCompatActivity() {
         setIntent(intent)
         resumePositionMs = 0L
         resumePlayWhenReady = true
+        resetZoom()
         handleIntent(intent)
         player?.let { loadMedia(it) }
     }
@@ -384,6 +396,7 @@ class PlayerActivity : AppCompatActivity() {
             }
             resizeMode = mode
             playerView.resizeMode = mode
+            resetZoom()
             showInfo(getString(label))
             scheduleHideControls()
         }
@@ -618,6 +631,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private val pipModeListener = Consumer<PictureInPictureModeChangedInfo> { info ->
         val inPip = info.isInPictureInPictureMode
+        if (inPip) resetZoom()
         touchLayer.visibility = if (inPip) View.GONE else View.VISIBLE
         gestureInfo.visibility = View.GONE
         if (inPip) {
@@ -702,16 +716,41 @@ class PlayerActivity : AppCompatActivity() {
             }
         })
 
+        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                zoomBy(detector.scaleFactor, detector.focusX, detector.focusY)
+                return true
+            }
+        })
+
         touchLayer.setOnTouchListener { _, event ->
             detector.onTouchEvent(event)
+            scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x
                     downY = event.y
                     gestureMode = GestureMode.NONE
+                    multiTouch = false
                 }
-                MotionEvent.ACTION_MOVE -> handleDrag(event)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishDrag()
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    // A second finger turns this touch into zoom/pan; stop any one-finger gesture.
+                    if (gestureMode == GestureMode.SEEK) endScrub(seekBar.progress.toLong())
+                    gestureMode = GestureMode.IGNORED
+                    multiTouch = true
+                    lastFocusX = Float.NaN
+                }
+                MotionEvent.ACTION_POINTER_UP -> lastFocusX = Float.NaN
+                MotionEvent.ACTION_MOVE ->
+                    if (multiTouch) {
+                        if (event.pointerCount >= 2) panWithFocus(event)
+                    } else {
+                        handleDrag(event)
+                    }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    finishDrag()
+                    multiTouch = false
+                }
             }
             true
         }
@@ -767,6 +806,60 @@ class PlayerActivity : AppCompatActivity() {
                 showInfo("☀ ${(value * 100).toInt()}%")
             }
             GestureMode.NONE, GestureMode.IGNORED -> Unit
+        }
+    }
+
+    /** Scales around the pinch focus point. Never smaller than the original size. */
+    private fun zoomBy(factor: Float, focusX: Float, focusY: Float) {
+        val newScale = (zoomScale * factor).coerceIn(1f, MAX_ZOOM)
+        if (newScale == zoomScale) return
+        val view = zoomTarget
+        // Pivot is the view centre; keep the content under the fingers in place.
+        val cx = view.left + view.width / 2f
+        val cy = view.top + view.height / 2f
+        val ratio = newScale / zoomScale
+        zoomScale = newScale
+        view.scaleX = newScale
+        view.scaleY = newScale
+        setPan(
+            (focusX - cx) - ratio * (focusX - cx - view.translationX),
+            (focusY - cy) - ratio * (focusY - cy - view.translationY),
+        )
+        showInfo(String.format(java.util.Locale.US, "🔍 %.1fx", newScale))
+    }
+
+    private fun panWithFocus(event: MotionEvent) {
+        var fx = 0f
+        var fy = 0f
+        for (i in 0 until event.pointerCount) {
+            fx += event.getX(i)
+            fy += event.getY(i)
+        }
+        fx /= event.pointerCount
+        fy /= event.pointerCount
+        if (!lastFocusX.isNaN() && zoomScale > 1f) {
+            setPan(zoomTarget.translationX + fx - lastFocusX, zoomTarget.translationY + fy - lastFocusY)
+        }
+        lastFocusX = fx
+        lastFocusY = fy
+    }
+
+    /** Applies a pan, clamped so the zoomed video never leaves a gap at its edges. */
+    private fun setPan(tx: Float, ty: Float) {
+        val view = zoomTarget
+        val maxX = (zoomScale - 1f) * view.width / 2f
+        val maxY = (zoomScale - 1f) * view.height / 2f
+        view.translationX = tx.coerceIn(-maxX, maxX)
+        view.translationY = ty.coerceIn(-maxY, maxY)
+    }
+
+    private fun resetZoom() {
+        zoomScale = 1f
+        zoomTarget.apply {
+            scaleX = 1f
+            scaleY = 1f
+            translationX = 0f
+            translationY = 0f
         }
     }
 
