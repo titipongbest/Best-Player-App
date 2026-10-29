@@ -1,6 +1,8 @@
 package com.best.player
 
 import android.Manifest
+import android.app.PictureInPictureParams
+import android.content.res.ColorStateList
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -13,6 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Rational
 import android.provider.OpenableColumns
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -28,7 +31,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
 import androidx.core.view.ViewCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -36,6 +42,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.VideoSize
+import androidx.media3.session.MediaSession
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -43,6 +51,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToLong
@@ -54,13 +63,15 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "title"
         private const val CONTROLS_TIMEOUT_MS = 3500L
         private const val SEEK_WATCHDOG_MS = 400L
-        private const val DOUBLE_TAP_SEEK_MS = 10_000L
         /** Horizontal swipe across the full screen width moves this much time (capped by duration). */
         private const val SWIPE_FULL_WIDTH_MS = 120_000L
-        private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
     }
 
     private var player: ExoPlayer? = null
+    private var mediaSession: MediaSession? = null
+    private lateinit var settings: PlayerSettings
+    private lateinit var btnLoop: ImageButton
     private lateinit var playerView: PlayerView
     private lateinit var controls: View
     private lateinit var touchLayer: View
@@ -113,7 +124,7 @@ class PlayerActivity : AppCompatActivity() {
     private var gestureStartBrightness = 0.5f
     private var touchSlop = 0
 
-    private enum class GestureMode { NONE, SEEK, VOLUME, BRIGHTNESS }
+    private enum class GestureMode { NONE, IGNORED, SEEK, VOLUME, BRIGHTNESS }
 
     private val hideControlsRunnable = Runnable { setControlsVisible(false) }
     private val hideInfoRunnable = Runnable { gestureInfo.visibility = View.GONE }
@@ -142,6 +153,7 @@ class PlayerActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         hideSystemBars()
 
+        settings = PlayerSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
 
@@ -157,6 +169,7 @@ class PlayerActivity : AppCompatActivity() {
         tvSpeed = findViewById(R.id.btn_speed)
         btnPlayPause = findViewById(R.id.btn_play_pause)
         btnCapture = findViewById(R.id.btn_capture)
+        btnLoop = findViewById(R.id.btn_loop)
 
         ViewCompat.setOnApplyWindowInsetsListener(controls) { v, insets ->
             val cut = insets.getInsetsIgnoringVisibility(
@@ -170,6 +183,7 @@ class PlayerActivity : AppCompatActivity() {
         handleIntent(intent)
         setupControls()
         setupGestures()
+        addOnPictureInPictureModeChangedListener(pipModeListener)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -231,13 +245,13 @@ class PlayerActivity : AppCompatActivity() {
         val renderersFactory = DefaultRenderersFactory(this)
             .setEnableDecoderFallback(true)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        val exo = ExoPlayer.Builder(this, renderersFactory)
-            .setSeekBackIncrementMs(DOUBLE_TAP_SEEK_MS)
-            .setSeekForwardIncrementMs(DOUBLE_TAP_SEEK_MS)
-            .build()
+        val exo = ExoPlayer.Builder(this, renderersFactory).build()
         exo.setSeekParameters(SeekParameters.EXACT)
         exo.setPlaybackSpeed(SPEEDS[speedIndex])
+        exo.repeatMode = if (settings.loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
         exo.addListener(playerListener)
+        // A media session gives PiP and the notification shade play/pause controls.
+        mediaSession = MediaSession.Builder(this, exo).build()
         playerView.player = exo
         playerView.resizeMode = resizeMode
         player = exo
@@ -257,6 +271,8 @@ class PlayerActivity : AppCompatActivity() {
         resumePositionMs = exo.currentPosition
         resumePlayWhenReady = exo.playWhenReady
         exo.removeListener(playerListener)
+        mediaSession?.release()
+        mediaSession = null
         exo.release()
         playerView.player = null
         player = null
@@ -282,6 +298,11 @@ class PlayerActivity : AppCompatActivity() {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             btnPlayPause.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
             if (isPlaying) stepAnchorUs = C.TIME_UNSET
+            updatePipParams()
+        }
+
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            updatePipParams()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -334,12 +355,25 @@ class PlayerActivity : AppCompatActivity() {
             scheduleHideControls()
         }
 
-        tvSpeed.setOnClickListener {
-            speedIndex = (speedIndex + 1) % SPEEDS.size
-            val speed = SPEEDS[speedIndex]
-            player?.setPlaybackSpeed(speed)
-            tvSpeed.text = "${speed}x"
+        tvSpeed.setOnClickListener { showSpeedPicker() }
+
+        btnLoop.setOnClickListener {
+            settings.loop = !settings.loop
+            player?.repeatMode = if (settings.loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            updateLoopButton()
+            showInfo(getString(if (settings.loop) R.string.loop_on else R.string.loop_off))
             scheduleHideControls()
+        }
+        updateLoopButton()
+
+        findViewById<View>(R.id.btn_pip).setOnClickListener { enterPip() }
+
+        findViewById<View>(R.id.btn_settings).setOnClickListener {
+            handler.removeCallbacks(hideControlsRunnable)
+            settings.showDialog(this) {
+                hideSystemBars()
+                scheduleHideControls()
+            }
         }
 
         findViewById<View>(R.id.btn_aspect).setOnClickListener {
@@ -553,6 +587,88 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------------------------------------------------------- speed / loop
+
+    private fun showSpeedPicker() {
+        handler.removeCallbacks(hideControlsRunnable)
+        val labels = SPEEDS.map { "${it}x" }.toTypedArray()
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.speed)
+            .setSingleChoiceItems(labels, speedIndex) { dialog, which ->
+                speedIndex = which
+                val speed = SPEEDS[which]
+                player?.setPlaybackSpeed(speed)
+                tvSpeed.text = "${speed}x"
+                dialog.dismiss()
+            }
+            .setOnDismissListener {
+                hideSystemBars()
+                scheduleHideControls()
+            }
+            .show()
+    }
+
+    private fun updateLoopButton() {
+        val color = if (settings.loop) ContextCompat.getColor(this, R.color.accent) else 0xFFFFFFFF.toInt()
+        ImageViewCompat.setImageTintList(btnLoop, ColorStateList.valueOf(color))
+        btnLoop.alpha = if (settings.loop) 1f else 0.7f
+    }
+
+    // ---------------------------------------------------------------- picture-in-picture
+
+    private val pipModeListener = Consumer<PictureInPictureModeChangedInfo> { info ->
+        val inPip = info.isInPictureInPictureMode
+        touchLayer.visibility = if (inPip) View.GONE else View.VISIBLE
+        gestureInfo.visibility = View.GONE
+        if (inPip) {
+            handler.removeCallbacks(hideControlsRunnable)
+            controls.animate().cancel()
+            controls.visibility = View.GONE
+            controlsVisible = false
+        } else {
+            setControlsVisible(true)
+            hideSystemBars()
+        }
+    }
+
+    private fun buildPipParams(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder()
+        val size = player?.videoSize
+        if (size != null && size.width > 0 && size.height > 0) {
+            // Android only accepts ratios between 1:2.39 and 2.39:1.
+            val ratio = (size.width * size.pixelWidthHeightRatio / size.height).coerceIn(0.42f, 2.38f)
+            builder.setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(settings.autoPip && player?.isPlaying == true)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    private fun updatePipParams() {
+        if (!supportsPip()) return
+        runCatching { setPictureInPictureParams(buildPipParams()) }
+    }
+
+    private fun supportsPip() = packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun enterPip() {
+        if (!supportsPip()) {
+            Toast.makeText(this, R.string.pip_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { enterPictureInPictureMode(buildPipParams()) }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 12+ enters automatically via setAutoEnterEnabled.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && settings.autoPip && player?.isPlaying == true) {
+            enterPip()
+        }
+    }
+
     // ---------------------------------------------------------------- gestures
 
     @SuppressLint("ClickableViewAccessibility")
@@ -568,14 +684,16 @@ class PlayerActivity : AppCompatActivity() {
             override fun onDoubleTap(e: MotionEvent): Boolean {
                 val exo = player ?: return false
                 val third = touchLayer.width / 3f
+                val seekMs = settings.doubleTapSeekSeconds * 1000L
                 when {
                     e.x < third -> {
-                        exo.seekBack()
-                        showInfo("« ${DOUBLE_TAP_SEEK_MS / 1000}s")
+                        exo.seekTo((exo.currentPosition - seekMs).coerceAtLeast(0))
+                        showInfo("« ${settings.doubleTapSeekSeconds}s")
                     }
                     e.x > third * 2 -> {
-                        exo.seekForward()
-                        showInfo("${DOUBLE_TAP_SEEK_MS / 1000}s »")
+                        val end = if (exo.duration > 0) exo.duration else Long.MAX_VALUE
+                        exo.seekTo((exo.currentPosition + seekMs).coerceAtMost(end))
+                        showInfo("${settings.doubleTapSeekSeconds}s »")
                     }
                     else -> togglePlayPause()
                 }
@@ -606,9 +724,12 @@ class PlayerActivity : AppCompatActivity() {
         if (gestureMode == GestureMode.NONE) {
             if (abs(dx) < touchSlop && abs(dy) < touchSlop) return
             gestureMode = when {
-                abs(dx) > abs(dy) -> GestureMode.SEEK
-                downX < touchLayer.width / 2f -> GestureMode.BRIGHTNESS
-                else -> GestureMode.VOLUME
+                abs(dx) > abs(dy) ->
+                    if (settings.swipeSeekGesture) GestureMode.SEEK else GestureMode.IGNORED
+                downX < touchLayer.width / 2f ->
+                    if (settings.brightnessGesture) GestureMode.BRIGHTNESS else GestureMode.IGNORED
+                else ->
+                    if (settings.volumeGesture) GestureMode.VOLUME else GestureMode.IGNORED
             }
             when (gestureMode) {
                 GestureMode.SEEK -> {
@@ -621,7 +742,7 @@ class PlayerActivity : AppCompatActivity() {
                     val current = window.attributes.screenBrightness
                     gestureStartBrightness = if (current < 0) 0.5f else current
                 }
-                GestureMode.NONE -> Unit
+                GestureMode.NONE, GestureMode.IGNORED -> Unit
             }
         }
 
@@ -645,7 +766,7 @@ class PlayerActivity : AppCompatActivity() {
                 window.attributes = window.attributes.apply { screenBrightness = value }
                 showInfo("☀ ${(value * 100).toInt()}%")
             }
-            GestureMode.NONE -> Unit
+            GestureMode.NONE, GestureMode.IGNORED -> Unit
         }
     }
 

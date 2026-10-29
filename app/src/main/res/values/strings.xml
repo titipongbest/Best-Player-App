@@ -21,4 +21,17 @@
     <string name="resize_fit">พอดีจอ</string>
     <string name="resize_fill">ยืดเต็มจอ</string>
     <string name="resize_zoom">ซูมเต็มจอ</string>
+    <string name="settings">ตั้งค่า</string>
+    <string name="loop">เล่นวนซ้ำ</string>
+    <string name="loop_on">เล่นวนซ้ำ: เปิด</string>
+    <string name="loop_off">เล่นวนซ้ำ: ปิด</string>
+    <string name="pip">ภาพซ้อนภาพ</string>
+    <string name="pip_unsupported">เครื่องนี้ไม่รองรับภาพซ้อนภาพ</string>
+    <string name="speed">ความเร็วการเล่น</string>
+    <string name="close">ปิด</string>
+    <string name="pref_brightness">ปัดขึ้น/ลงฝั่งซ้ายเพื่อปรับแสง</string>
+    <string name="pref_volume">ปัดขึ้น/ลงฝั่งขวาเพื่อปรับเสียง</string>
+    <string name="pref_swipe_seek">ปัดซ้าย/ขวาเพื่อเลื่อนเวลา</string>
+    <string name="pref_auto_pip">เข้าภาพซ้อนภาพอัตโนมัติเมื่อออกจากแอพ</string>
+    <string name="pref_double_tap">แตะสองครั้งที่ขอบจอ ข้าม/ถอย: %1$d วินาที</string>
 </resources>

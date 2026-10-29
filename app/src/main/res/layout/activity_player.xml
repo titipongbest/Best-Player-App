@@ -83,16 +83,11 @@
                 android:text="1.0x" />
 
             <ImageButton
-                android:id="@+id/btn_aspect"
+                android:id="@+id/btn_settings"
                 style="@style/PlayerIconButton"
-                android:contentDescription="@string/aspect"
-                android:src="@drawable/ic_aspect" />
-
-            <ImageButton
-                android:id="@+id/btn_rotate"
-                style="@style/PlayerIconButton"
-                android:contentDescription="@string/rotate"
-                android:src="@drawable/ic_rotate" />
+                android:layout_marginStart="4dp"
+                android:contentDescription="@string/settings"
+                android:src="@drawable/ic_settings" />
         </LinearLayout>
 
         <LinearLayout
@@ -145,7 +140,24 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center">
+                android:gravity="center_vertical">
+
+                <ImageButton
+                    android:id="@+id/btn_loop"
+                    style="@style/PlayerIconButton"
+                    android:contentDescription="@string/loop"
+                    android:src="@drawable/ic_repeat" />
+
+                <ImageButton
+                    android:id="@+id/btn_aspect"
+                    style="@style/PlayerIconButton"
+                    android:contentDescription="@string/aspect"
+                    android:src="@drawable/ic_aspect" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
 
                 <ImageButton
                     android:id="@+id/btn_prev_frame"
@@ -158,8 +170,8 @@
                     style="@style/PlayerIconButton"
                     android:layout_width="64dp"
                     android:layout_height="64dp"
-                    android:layout_marginStart="16dp"
-                    android:layout_marginEnd="16dp"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
                     android:contentDescription="@string/play_pause"
                     android:src="@drawable/ic_pause" />
 
@@ -168,6 +180,23 @@
                     style="@style/PlayerIconButton"
                     android:contentDescription="@string/next_frame"
                     android:src="@drawable/ic_next_frame" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/btn_rotate"
+                    style="@style/PlayerIconButton"
+                    android:contentDescription="@string/rotate"
+                    android:src="@drawable/ic_rotate" />
+
+                <ImageButton
+                    android:id="@+id/btn_pip"
+                    style="@style/PlayerIconButton"
+                    android:contentDescription="@string/pip"
+                    android:src="@drawable/ic_pip" />
             </LinearLayout>
         </LinearLayout>
 
