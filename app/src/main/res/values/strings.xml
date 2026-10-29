@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Best Player</string>
+    <string name="open_file">เปิดไฟล์</string>
+    <string name="no_videos">ไม่พบวิดีโอในเครื่อง\nกด \"เปิดไฟล์\" เพื่อเลือกเอง</string>
+    <string name="need_permission">ต้องอนุญาตให้เข้าถึงวิดีโอก่อน</string>
+    <string name="grant">อนุญาต</string>
+    <string name="back">ย้อนกลับ</string>
+    <string name="play_pause">เล่น/หยุด</string>
+    <string name="prev_frame">เฟรมก่อนหน้า</string>
+    <string name="next_frame">เฟรมถัดไป</string>
+    <string name="capture_frame">จับภาพเฟรม</string>
+    <string name="aspect">อัตราส่วนภาพ</string>
+    <string name="rotate">หมุนจอ</string>
+    <string name="seek_exact">แม่นยำ</string>
+    <string name="seek_fast">เร็ว</string>
+    <string name="capturing">กำลังจับภาพ…</string>
+    <string name="capture_saved">บันทึกภาพแล้ว: Pictures/BestPlayer/%1$s</string>
+    <string name="capture_failed">จับภาพไม่สำเร็จ</string>
+    <string name="playback_error">เล่นไฟล์นี้ไม่ได้: %1$s</string>
+    <string name="resize_fit">พอดีจอ</string>
+    <string name="resize_fill">ยืดเต็มจอ</string>
+    <string name="resize_zoom">ซูมเต็มจอ</string>
+</resources>
