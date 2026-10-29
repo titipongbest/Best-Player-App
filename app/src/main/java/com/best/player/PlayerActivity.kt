@@ -101,7 +101,7 @@ class PlayerActivity : AppCompatActivity() {
     /** Presentation time of the frame we stepped to, or TIME_UNSET when not stepping. */
     private var stepAnchorUs = C.TIME_UNSET
 
-    private var speedIndex = SPEEDS.indexOf(1f)
+    private var speedIndex = 3 // 1.0x
     private var resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
 
     private lateinit var audioManager: AudioManager
