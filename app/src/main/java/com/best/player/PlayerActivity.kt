@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.RectF
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -582,9 +583,13 @@ class PlayerActivity : AppCompatActivity() {
 
         btnCapture.isEnabled = false
         showInfo(getString(R.string.capturing), autoHide = false)
+        // Only the part of the video visible on screen is saved (matters when zoomed).
+        val visible = visibleVideoRect()
         lifecycleScope.launch {
-            val bitmap = FrameCapture.decodeFrame(this@PlayerActivity, uri, timeUs)
-                ?: (playerView.videoSurfaceView as? SurfaceView)?.let { FrameCapture.copySurface(it) }
+            val bitmap = (
+                FrameCapture.decodeFrame(this@PlayerActivity, uri, timeUs)
+                    ?: (playerView.videoSurfaceView as? SurfaceView)?.let { FrameCapture.copySurface(it) }
+                )?.let { FrameCapture.crop(it, visible) }
             val saved = bitmap?.let { FrameCapture.save(this@PlayerActivity, it, baseName) }
             btnCapture.isEnabled = true
             if (bitmap != null && saved != null) {
@@ -842,6 +847,28 @@ class PlayerActivity : AppCompatActivity() {
         }
         lastFocusX = fx
         lastFocusY = fy
+    }
+
+    /**
+     * The visible part of the video as fractions (0..1) of the full frame, taking
+     * pinch zoom, pan and the resize mode into account.
+     */
+    private fun visibleVideoRect(): RectF {
+        val view = zoomTarget
+        val parent = view.parent as? View ?: return RectF(0f, 0f, 1f, 1f)
+        if (view.width <= 0 || view.height <= 0) return RectF(0f, 0f, 1f, 1f)
+        val s = view.scaleX
+        val cx = view.left + view.width / 2f
+        val cy = view.top + view.height / 2f
+        // Map the screen viewport back into the content frame's unscaled coordinates.
+        fun toFrameX(x: Float) = (cx + (x - cx - view.translationX) / s - view.left) / view.width
+        fun toFrameY(y: Float) = (cy + (y - cy - view.translationY) / s - view.top) / view.height
+        return RectF(
+            toFrameX(0f).coerceIn(0f, 1f),
+            toFrameY(0f).coerceIn(0f, 1f),
+            toFrameX(parent.width.toFloat()).coerceIn(0f, 1f),
+            toFrameY(parent.height.toFloat()).coerceIn(0f, 1f),
+        )
     }
 
     /** Applies a pan, clamped so the zoomed video never leaves a gap at its edges. */

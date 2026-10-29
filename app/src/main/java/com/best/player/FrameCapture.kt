@@ -3,6 +3,7 @@ package com.best.player
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -55,6 +56,16 @@ object FrameCapture {
                 cont.resume(null)
             }
         }
+    }
+
+    /** Crops [bitmap] to [fraction] (0..1 on each axis). Returns the original if it covers it all. */
+    fun crop(bitmap: Bitmap, fraction: RectF): Bitmap {
+        val x = (fraction.left * bitmap.width).toInt().coerceIn(0, bitmap.width - 1)
+        val y = (fraction.top * bitmap.height).toInt().coerceIn(0, bitmap.height - 1)
+        val w = ((fraction.right * bitmap.width).toInt() - x).coerceIn(1, bitmap.width - x)
+        val h = ((fraction.bottom * bitmap.height).toInt() - y).coerceIn(1, bitmap.height - y)
+        if (x == 0 && y == 0 && w == bitmap.width && h == bitmap.height) return bitmap
+        return Bitmap.createBitmap(bitmap, x, y, w, h)
     }
 
     /** Saves as lossless PNG. Returns the saved file name, or null on failure. */
