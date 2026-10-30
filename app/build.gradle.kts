@@ -11,8 +11,8 @@ android {
         applicationId = "com.best.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.2.2"
     }
 
     // Release signing comes from environment variables (set by CI from GitHub Secrets).
@@ -23,7 +23,7 @@ android {
             create("release") {
                 storeFile = file(keystoreFile)
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS") ?: "bestplayer"
+                keyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "bestplayer"
                 keyPassword = System.getenv("KEYSTORE_PASSWORD")
             }
         }
