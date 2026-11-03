@@ -65,8 +65,19 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "title"
         private const val CONTROLS_TIMEOUT_MS = 3500L
         private const val SEEK_WATCHDOG_MS = 400L
-        /** Horizontal swipe across the full screen width moves this much time (capped by duration). */
-        private const val SWIPE_FULL_WIDTH_MS = 120_000L
+        // Swipe-to-seek: time moved per full screen width depends on finger speed.
+        // Slow drags are fine-grained, fast flicks cover long distances.
+        private const val SWIPE_SLOW_WIDTH_MS = 15_000.0
+        private const val SWIPE_FAST_WIDTH_MS = 180_000.0
+        /** Finger speed (screen widths per second) at or below which the slow rate applies. */
+        private const val SWIPE_SLOW_SPEED = 0.3
+        /** Finger speed (screen widths per second) at or above which the fast rate applies. */
+        private const val SWIPE_FAST_SPEED = 2.5
+        /** Fine-seek mode (finger moved up/down away from the start) uses this fixed rate. */
+        private const val SWIPE_FINE_WIDTH_MS = 4_000.0
+        /** Vertical travel, as a fraction of the screen height, that turns fine-seek mode on. */
+        private const val FINE_SEEK_ENTER = 0.18f
+        private const val FINE_SEEK_EXIT = 0.12f
         private const val MAX_ZOOM = 5f
         private val SPEEDS = floatArrayOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f)
     }
@@ -126,6 +137,13 @@ class PlayerActivity : AppCompatActivity() {
     private var gestureStartVolume = 0
     private var gestureStartBrightness = 0.5f
     private var touchSlop = 0
+
+    // --- Swipe-to-seek state ---
+    private var swipeTargetMs = 0.0
+    private var swipeLastX = 0f
+    private var swipeLastTime = 0L
+    private var swipeSpeed = 0.0 // smoothed, screen widths per second
+    private var fineSeek = false
 
     // --- Pinch zoom / two-finger pan ---
     private var zoomScale = 1f
@@ -488,14 +506,15 @@ class PlayerActivity : AppCompatActivity() {
         handler.removeCallbacks(hideControlsRunnable)
     }
 
-    private fun scrubTo(positionMs: Long) {
+    private fun scrubTo(positionMs: Long, label: String? = null) {
         val exo = player ?: return
         val target = positionMs.coerceIn(0, maxOf(exo.duration, 0))
         tvPosition.text = TimeFormat.format(target)
         val delta = target - scrubStartMs
         val sign = if (delta >= 0) "+" else "-"
         showInfo(
-            "${TimeFormat.format(target, withMillis = true)}\n[$sign${TimeFormat.format(abs(delta))}]",
+            (if (label != null) "$label\n" else "") +
+                "${TimeFormat.format(target, withMillis = true)}\n[$sign${TimeFormat.format(abs(delta))}]",
             autoHide = false,
         )
         pendingSeekMs = target
@@ -778,6 +797,12 @@ class PlayerActivity : AppCompatActivity() {
             when (gestureMode) {
                 GestureMode.SEEK -> {
                     gestureStartPositionMs = exo.currentPosition
+                    // Start measuring from here so crossing the touch slop doesn't jump.
+                    swipeTargetMs = gestureStartPositionMs.toDouble()
+                    swipeLastX = event.x
+                    swipeLastTime = event.eventTime
+                    swipeSpeed = 0.0
+                    fineSeek = false
                     beginScrub()
                 }
                 GestureMode.VOLUME ->
@@ -793,11 +818,38 @@ class PlayerActivity : AppCompatActivity() {
         val height = touchLayer.height.coerceAtLeast(1)
         when (gestureMode) {
             GestureMode.SEEK -> {
-                val range = minOf(SWIPE_FULL_WIDTH_MS, maxOf(exo.duration, 0))
-                val deltaMs = (dx / touchLayer.width.coerceAtLeast(1) * range).toLong()
-                val target = gestureStartPositionMs + deltaMs
+                val width = touchLayer.width.coerceAtLeast(1).toDouble()
+                val stepX = event.x - swipeLastX
+                val dtMs = (event.eventTime - swipeLastTime).coerceAtLeast(1)
+                swipeLastX = event.x
+                swipeLastTime = event.eventTime
+
+                val instant = abs(stepX) / width * 1000.0 / dtMs
+                swipeSpeed = if (swipeSpeed == 0.0) instant else swipeSpeed * 0.6 + instant * 0.4
+
+                val vertical = abs(dy) / height
+                val wasFine = fineSeek
+                fineSeek = if (fineSeek) vertical > FINE_SEEK_EXIT else vertical > FINE_SEEK_ENTER
+                if (fineSeek != wasFine) {
+                    // Fine mode always shows the exact frame.
+                    exo.setSeekParameters(
+                        if (fineSeek || exactScrub) SeekParameters.EXACT else SeekParameters.CLOSEST_SYNC,
+                    )
+                }
+
+                val duration = maxOf(exo.duration, 0).toDouble()
+                var rate = if (fineSeek) {
+                    SWIPE_FINE_WIDTH_MS
+                } else {
+                    val t = ((swipeSpeed - SWIPE_SLOW_SPEED) / (SWIPE_FAST_SPEED - SWIPE_SLOW_SPEED)).coerceIn(0.0, 1.0)
+                    SWIPE_SLOW_WIDTH_MS + (SWIPE_FAST_WIDTH_MS - SWIPE_SLOW_WIDTH_MS) * t * t
+                }
+                if (duration > 0) rate = minOf(rate, duration)
+
+                swipeTargetMs = (swipeTargetMs + stepX / width * rate).coerceIn(0.0, duration)
+                val target = swipeTargetMs.toLong()
                 seekBar.progress = target.toInt()
-                scrubTo(target)
+                scrubTo(target, if (fineSeek) getString(R.string.fine_seek) else null)
             }
             GestureMode.VOLUME -> {
                 val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
