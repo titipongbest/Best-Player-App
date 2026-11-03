@@ -13,6 +13,7 @@
     <string name="aspect">อัตราส่วนภาพ</string>
     <string name="rotate">หมุนจอ</string>
     <string name="seek_exact">แม่นยำ</string>
+    <string name="fine_seek">🔍 โหมดละเอียด</string>
     <string name="seek_fast">เร็ว</string>
     <string name="capturing">กำลังจับภาพ…</string>
     <string name="capture_saved">บันทึกภาพแล้ว: Pictures/BestPlayer/%1$s</string>
