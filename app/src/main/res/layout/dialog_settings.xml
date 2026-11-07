@@ -39,6 +39,13 @@
             android:minHeight="56dp"
             android:text="@string/pref_auto_pip" />
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/sw_show_nav_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp"
+            android:text="@string/pref_show_nav_bar" />
+
         <TextView
             android:id="@+id/tv_double_tap"
             android:layout_width="match_parent"
