@@ -32,6 +32,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.Insets
 import androidx.core.content.ContextCompat
 import androidx.core.app.PictureInPictureModeChangedInfo
 import androidx.core.util.Consumer
@@ -181,9 +182,9 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        settings = PlayerSettings(this)
         hideSystemBars()
 
-        settings = PlayerSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
 
@@ -206,6 +207,16 @@ class PlayerActivity : AppCompatActivity() {
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
             )
             v.setPadding(cut.left, cut.top, cut.right, cut.bottom)
+            insets
+        }
+        // Keep the video clear of the navigation bar when the user chose to always show it.
+        ViewCompat.setOnApplyWindowInsetsListener(playerView) { v, insets ->
+            val nav = if (settings.showNavigationBar) {
+                insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            } else {
+                Insets.NONE
+            }
+            v.setPadding(nav.left, nav.top, nav.right, nav.bottom)
             insets
         }
 
@@ -485,10 +496,20 @@ class PlayerActivity : AppCompatActivity() {
         if (autoHide) handler.postDelayed(hideInfoRunnable, 800)
     }
 
+    /**
+     * Hides the status bar, and the navigation bar too unless the user chose to always show it
+     * (Settings > show navigation bar).
+     */
     private fun hideSystemBars() {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.systemBars())
+        if (settings.showNavigationBar) {
+            controller.hide(WindowInsetsCompat.Type.statusBars())
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+        } else {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        if (::playerView.isInitialized) ViewCompat.requestApplyInsets(playerView)
     }
 
     // ---------------------------------------------------------------- realtime scrub

@@ -28,6 +28,11 @@ class PlayerSettings(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_PIP, true)
         set(value) = prefs.edit().putBoolean(KEY_AUTO_PIP, value).apply()
 
+    /** When true the system navigation bar stays visible during playback instead of hiding. */
+    var showNavigationBar: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_NAV_BAR, false)
+        set(value) = prefs.edit().putBoolean(KEY_SHOW_NAV_BAR, value).apply()
+
     var doubleTapSeekSeconds: Int
         get() = prefs.getInt(KEY_DOUBLE_TAP, 10)
         set(value) = prefs.edit().putInt(KEY_DOUBLE_TAP, value).apply()
@@ -55,6 +60,10 @@ class PlayerSettings(context: Context) {
             isChecked = autoPip
             setOnCheckedChangeListener { _, checked -> autoPip = checked }
         }
+        view.findViewById<MaterialSwitch>(R.id.sw_show_nav_bar).apply {
+            isChecked = showNavigationBar
+            setOnCheckedChangeListener { _, checked -> showNavigationBar = checked }
+        }
         val label = view.findViewById<TextView>(R.id.tv_double_tap)
         val slider = view.findViewById<Slider>(R.id.slider_double_tap)
         val seconds = doubleTapSeekSeconds.coerceIn(1, 60)
@@ -80,6 +89,7 @@ class PlayerSettings(context: Context) {
         const val KEY_VOLUME = "gesture_volume"
         const val KEY_SWIPE_SEEK = "gesture_swipe_seek"
         const val KEY_AUTO_PIP = "auto_pip"
+        const val KEY_SHOW_NAV_BAR = "show_navigation_bar"
         const val KEY_DOUBLE_TAP = "double_tap_seconds"
         const val KEY_LOOP = "loop"
     }
